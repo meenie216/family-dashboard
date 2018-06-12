@@ -1,0 +1,83 @@
+body {
+    background-image: url('/static/Road-Background-Nature-Wallpaper.jpg')
+}
+
+
+ul.names {
+    padding-left: 0px;
+}
+
+/* 
+font-family: 'Indie Flower', cursive;
+font-family: 'Comfortaa', cursive;
+font-family: 'Permanent Marker', cursive;
+font-family: 'Courgette', cursive;
+font-family: 'Kaushan Script', cursive;
+font-family: 'Titan One', cursive; 
+*/
+
+li.name {
+    font-family: 'Architects Daughter', cursive;
+    list-style-type: none;
+    padding-top:  10px;
+}
+/* 
+li.name:nth-child(odd) {
+    background: white;
+} */
+
+p.calendar-name {
+    float: left;
+    color: white;
+    font-size: x-large;
+    clear: both;
+    margin: 0px;
+}
+
+ul.days {
+    padding-top: 0px;
+    padding-left: 100px;
+    border-bottom: 2px solid darkgrey;
+}
+
+p.daylabel {
+    display: none;
+}
+
+li.dayHeader {
+    font-size: x-large;
+    padding-top:  5px;
+    padding-bottom:  5px;
+    background: gray;
+    color: white;
+    border-right:  2px solid white;
+}
+
+ul.days li.day {
+    display: inline-block;
+    list-style-type: none;
+    width: 14%;
+    vertical-align: top;
+    text-align: center;
+}
+
+p.daylabel {
+    display: none;
+}
+
+ul.events {
+    padding-left: 0px;
+    width: 80%;
+}
+
+ul.events li.event {
+    width:  100%;
+    display: inline-block;
+    text-align: left;
+    width: 100%;
+    padding: 8px;
+    margin: 5px;
+    border-radius: 15px;
+    background: darkgray;
+    color: white;
+}
