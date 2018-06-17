@@ -1,6 +1,6 @@
 # Family Dashboard
 
-A replacement for the whiteboard calendar that we maintain.  Each familiy member gets a row, and 7 columns allow for a week of activities to be displayed.
+A replacement for the whiteboard calendar that we maintain.  Each family member gets a row, and 7 columns allow for a week of activities to be displayed.
 
 Whiteboard was difficult to maintain, and as most of us were also keeping a google calendar as well, automation seemed like a winner.
 
