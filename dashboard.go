@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"golang.org/x/net/context"
@@ -16,12 +17,31 @@ import (
 )
 
 type cals struct {
-	Calendars []cal `jsob:"calendars"`
+	Calendars []cal `json:"calendars"`
 }
 
 type cal struct {
 	Name string `json:"name"`
 	ID   string `json:"id"`
+}
+
+type familyCalendar struct {
+	MemberCalendars []memberCalendar `json:"memberCalendars"`
+}
+
+type memberCalendar struct {
+	Name string `json:"memberName"`
+	Days []day  `json:"days"`
+}
+
+type day struct {
+	Name   string  `json:"dayName"`
+	Events []event `json:"events"`
+}
+
+type event struct {
+	Id   string `json:"eventId"`
+	Name string `json:"eventName"`
 }
 
 // Retrieve a token, saves the token, then returns the generated client.
@@ -89,12 +109,10 @@ func loadCalendars(path string) []cal {
 	return c.Calendars
 }
 
-var eventsByDayByCalendar [][][]*calendar.Event
 var calendars []cal
 var dayKeys map[string]int
 var srv *calendar.Service
-
-//var days []string
+var family familyCalendar
 
 var days = [...]string{
 	"Sunday",
@@ -124,13 +142,20 @@ func init() {
 	}
 
 	calendars = loadCalendars("./calendars.json")
+
+	family.MemberCalendars = make([]memberCalendar, len(calendars))
 }
 
 func main() {
+	var wg sync.WaitGroup
 
+	updateLocalCalendarEvents()
 	ticker := time.NewTicker(30 * time.Second)
 	quit := make(chan struct{})
+
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for {
 			select {
 			case <-ticker.C:
@@ -142,37 +167,21 @@ func main() {
 		}
 	}()
 
-	http.HandleFunc("/", handler)
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		http.HandleFunc("/json", handler)
+		http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
+		log.Fatal(http.ListenAndServe(":8080", nil))
+	}()
 
-	for cal, eventsByDay := range eventsByDayByCalendar {
-		fmt.Println(calendars[cal].Name)
-		for day, events := range eventsByDay {
-			fmt.Println(day)
-			for i := range events {
-				item := events[i]
-				fmt.Println(item.Summary)
-				itemDayKey := item.Start.Date
-				if item.RecurringEventId != "" {
-					itemDayKey = item.OriginalStartTime.Date
-				}
-				fmt.Println(itemDayKey)
-			}
-		}
-	}
+	fmt.Println("Running")
+	wg.Wait()
+	fmt.Println("Closed")
+
 }
 
 func updateLocalCalendarEvents() {
-	// initialise slices
-	eventsByDayByCalendar = make([][][]*calendar.Event, len(calendars))
-	for calendarIndex := range eventsByDayByCalendar {
-		eventsByDayByCalendar[calendarIndex] = make([][]*calendar.Event, 7)
-		for dayIndex := range eventsByDayByCalendar[calendarIndex] {
-			eventsByDayByCalendar[calendarIndex][dayIndex] = make([]*calendar.Event, 0)
-		}
-	}
-
 	// Get week Boundaries
 	t0, t1 := weekBoundaries(time.Now())
 
@@ -189,45 +198,35 @@ func updateLocalCalendarEvents() {
 		events, _ := srv.Events.List(cal.ID).ShowDeleted(false).
 			SingleEvents(true).TimeMin(t0.Format(time.RFC3339)).TimeMax(t1.Format(time.RFC3339)).OrderBy("startTime").Do()
 
-		for _, item := range events.Items {
+		var member memberCalendar
+		member.Name = cal.Name
 
+		for _, d := range days {
+			var day day
+			day.Name = d
+			member.Days = append(member.Days, day)
+		}
+
+		for _, item := range events.Items {
 			itemDayKey := extractDayKey(item)
 			bucketIndex := dayKeys[itemDayKey]
+			bucket := &member.Days[bucketIndex]
 
-			eventsByDayByCalendar[i][bucketIndex] = append(eventsByDayByCalendar[i][bucketIndex], item)
+			var event event
+			event.Id = item.Id
+			event.Name = item.Summary
+
+			bucket.Events = append(bucket.Events, event)
 		}
+
+		family.MemberCalendars[i] = member
 	}
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "<html><head>")
-	fmt.Fprint(w, "<link rel='stylesheet' type='text/css' href='static/dashboard.css'>")
-	fmt.Fprint(w, "<link href='https://fonts.googleapis.com/css?family=Indie+Flower|Architects+Daughter|Boogaloo|Caveat+Brush|Chewy|Dokdo|Gochi+Hand' rel='stylesheet'>")
-	fmt.Fprint(w, "</head><body>")
-
-	fmt.Fprint(w, "<ul class='names'>")
-	// first print the day headers
-	fmt.Fprint(w, "<li class='name'><ul class='days'>")
-	for i := 0; i < 7; i++ {
-		fmt.Fprintf(w, "<li class='day dayHeader'>%s", days[i])
-	}
-	fmt.Fprint(w, "</ul>")
-
-	// Next iterate over collection and print all events retrieved
-	for cal, eventsByDay := range eventsByDayByCalendar {
-		fmt.Fprintf(w, "<li class='name'><p class='calendar-name'>%s</p>", calendars[cal].Name)
-		fmt.Fprint(w, "<ul class='days'>")
-		for day, events := range eventsByDay {
-			fmt.Fprintf(w, "<li class='day'><p class='daylabel'>%s</p><ul class='events'>", days[day])
-			for i := range events {
-				item := events[i]
-				fmt.Fprintf(w, "<li class='event'>%s", item.Summary)
-			}
-			fmt.Fprint(w, "</ul>")
-		}
-		fmt.Fprint(w, "</ul>")
-	}
-	fmt.Fprint(w, "</ul></body></html>")
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	json.NewEncoder(w).Encode(family)
 }
 
 func extractDayKey(item *calendar.Event) string {
@@ -252,9 +251,13 @@ func extractDayKey(item *calendar.Event) string {
 
 func weekBoundaries(t time.Time) (beginning time.Time, end time.Time) {
 	//daysSinceMonday := int(t.Weekday()+6) % 7 * -1
-	daysSinceMonday := int(t.Weekday())
-	offsetFromWeekBeginning := time.Hour * time.Duration(-24*daysSinceMonday)
-	beginning = t.Round(time.Hour * 24).Add(offsetFromWeekBeginning)
+
+	fmt.Println(t)
+	fmt.Println(t.Weekday())
+	daysSinceSunday := int(t.Weekday())
+	fmt.Println(daysSinceSunday)
+	offsetFromWeekBeginning := time.Hour * time.Duration(-24*daysSinceSunday)
+	beginning = t.Truncate(time.Hour * 24).Add(offsetFromWeekBeginning)
 	end = beginning.Add(time.Hour * (24 * 7))
 	return
 }
